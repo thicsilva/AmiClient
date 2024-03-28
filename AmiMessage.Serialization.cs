@@ -27,74 +27,70 @@ namespace Ami
 
     public sealed partial class AmiMessage
     {
-        internal static readonly Byte[] TerminatorBytes = { 0x0d, 0x0a };
+        internal static readonly byte[] TerminatorBytes = { 13, 10 };
 
-        internal static readonly Char[] TerminatorChars = { '\x0d', '\x0a' };
+        internal static readonly char[] TerminatorChars = { '\r', '\n' };
 
-        public static AmiMessage FromBytes(Byte[] bytes)
+        public static AmiMessage FromBytes(byte[] bytes)
         {
-            var result = new AmiMessage();
+            AmiMessage amiMessage = new AmiMessage();
 
-            for(var nrLine = 1;; nrLine++)
+            int num = 1;
+            while (true)
             {
-                var crlfPos = bytes.Find(AmiMessage.TerminatorBytes, 0, bytes.Length);
-
-                if(crlfPos == -1)
+                int end = bytes.Find(AmiMessage.TerminatorBytes, 0, bytes.Length);
+                if (end != -1)
                 {
-                    throw new ArgumentException($"unexpected end of message after {nrLine} line(s)", nameof(bytes));
+                    string str = Encoding.UTF8.GetString(bytes.Slice(0, end));
+                    bytes = bytes.Slice(end + AmiMessage.TerminatorBytes.Length);
+                    if (!str.Equals(string.Empty))
+                    {
+                        string[] strArray = str.Split(new char[1]{ ':' }, 2);
+                        if (strArray.Length == 2)
+                        {
+                            amiMessage.Add(strArray[0], strArray[1]);
+                            ++num;
+                        }
+                        else
+                            throw new ArgumentException($"unexpected end of message after {num} line(s)", nameof (bytes));
+                    }
+                    else
+                        throw new ArgumentException($"malformed field on line {num}", nameof (bytes));
                 }
-
-                var line = Encoding.UTF8.GetString(bytes.Slice(0, crlfPos));
-                bytes = bytes.Slice(crlfPos + AmiMessage.TerminatorBytes.Length);
-
-                if(line.Equals(String.Empty))
-                {
-                    break; // empty line terminates
-                }
-
-                var kvp = line.Split(new[] { ':' }, 2);
-
-                if(kvp.Length != 2)
-                {
-                    throw new ArgumentException($"malformed field on line {nrLine}", nameof(bytes));
-                }
-
-                result.Add(kvp[0], kvp[1]);
+                else
+                    break;
             }
 
-            return result;
+            return amiMessage;
         }
 
-        public static AmiMessage FromString(String @string)
+        public static AmiMessage FromString(string @string)
         {
-            var bytes = Encoding.UTF8.GetBytes(@string);
+            byte[] bytes = Encoding.UTF8.GetBytes(@string);
 
-            return AmiMessage.FromBytes(bytes);
+            return FromBytes(bytes);
         }
 
-        public Byte[] ToBytes()
+        public byte[] ToBytes()
         {
-            var stream = new MemoryStream();
+            MemoryStream stream = new MemoryStream();
 
-            using(var writer = new StreamWriter(stream, new UTF8Encoding(false)))
+            using(StreamWriter writer = new StreamWriter(stream, new UTF8Encoding(false)))
             {
-                foreach(var field in this.Fields)
+                foreach(KeyValuePair<string, string> field in Fields)
                 {
                     writer.Write(field.Key);
                     writer.Write(": ");
                     writer.Write(field.Value);
-                    writer.Write(AmiMessage.TerminatorChars);
+                    writer.Write(TerminatorChars);
                 }
 
-                writer.Write(AmiMessage.TerminatorChars);
+                writer.Write(TerminatorChars);
             }
 
             return stream.ToArray();
         }
 
-        public override String ToString()
-        {
-            return Encoding.UTF8.GetString(this.ToBytes());
-        }
+        public override string ToString() => Encoding.UTF8.GetString(ToBytes());
     }
 }

@@ -23,79 +23,79 @@ namespace Ami.ByteArrayExtensions
 	internal static class ByteArrayExtensions
 	{
 		[DebuggerStepThrough]
-		public static Byte[] Prepend(this Byte[] @this, Byte[] items)
+		public static byte[] Prepend(this byte[] bytes, byte[] items)
 		{
-			var result = new Byte[@this.Length + items.Length];
+			byte[] result = new byte[bytes.Length + items.Length];
 
 			Buffer.BlockCopy(items, 0, result, 0, items.Length);
-			Buffer.BlockCopy(@this, 0, result, items.Length, @this.Length);
+			Buffer.BlockCopy(bytes, 0, result, items.Length, bytes.Length);
 
 			return result;
 		}
 
 		[DebuggerStepThrough]
-		public static Byte[] Append(this Byte[] @this, Byte[] items)
+		public static byte[] Append(this byte[] bytes, byte[] items)
 		{
-			var result = new Byte[@this.Length + items.Length];
+			byte[] result = new byte[bytes.Length + items.Length];
 
-			Buffer.BlockCopy(@this, 0, result, 0, @this.Length);
-			Buffer.BlockCopy(items, 0, result, @this.Length, items.Length);
+			Buffer.BlockCopy(bytes, 0, result, 0, bytes.Length);
+			Buffer.BlockCopy(items, 0, result, bytes.Length, items.Length);
 
 			return result;
 		}
 
 		[DebuggerStepThrough]
-		public static Byte[] Slice(this Byte[] @this, Int32 start)
+		public static byte[] Slice(this byte[] bytes, int startPos)
 		{
-			var _start = (start < 0) ? (@this.Length + start) : (start);
-			var _end = (@this.Length);
+			int start = (startPos < 0) ? (bytes.Length + startPos) : (startPos);
+			int end = (bytes.Length);
 
-			return @this.Slice(_start, _end);
+			return bytes.Slice(start, end);
 		}
 
 		[DebuggerStepThrough]
-		public static Byte[] Slice(this Byte[] @this, Int32 start, Int32 end)
+		public static byte[] Slice(this byte[] bytes, int startPos, int endPos)
 		{
-			var _start = (start < 0) ? (@this.Length + start) : (start);
-			var _end = (end < 0) ? (@this.Length + end) : (end);
+			int start = (startPos < 0) ? (bytes.Length + startPos) : (startPos);
+			int end = (endPos < 0) ? (bytes.Length + endPos) : (endPos);
 
-			if(_start < 0 || @this.Length < _start)
+			if(start < 0 || bytes.Length < start)
 			{
-				throw new ArgumentOutOfRangeException(nameof(start));
+				throw new ArgumentOutOfRangeException(nameof(startPos));
 			}
 
-			if(_end < _start || @this.Length < _end)
+			if(end < start || bytes.Length < end)
 			{
-				throw new ArgumentOutOfRangeException(nameof(end));
+				throw new ArgumentOutOfRangeException(nameof(endPos));
 			}
 
-			var result = new Byte[_end - _start];
+			byte[] result = new byte[end - start];
 
-			Buffer.BlockCopy(@this, _start, result, 0, result.Length);
+			Buffer.BlockCopy(bytes, start, result, 0, result.Length);
 
 			return result;
 		}
 
 		[DebuggerStepThrough]
-		public static Int32 Find(this Byte[] @this, Byte[] needle, Int32 start = 0)
+		public static int Find(this byte[] bytes, byte[] needle, int startPos = 0)
 		{
-			var _start = (start < 0) ? (@this.Length + start) : (start);
-			var _end = (@this.Length);
+			int start = (startPos < 0) ? (bytes.Length + startPos) : (startPos);
+			int end = (bytes.Length);
 
-			return @this.Find(needle, _start, _end);
+			return bytes.Find(needle, start, end);
 		}
 
 		[DebuggerStepThrough]
-		public static Int32 Find(this Byte[] @this, Byte[] needle, Int32 start, Int32 end)
+		public static int Find(this byte[] bytes, byte[] needle, int startPos, int endPos)
 		{
-			var _start = (start < 0) ? (@this.Length + start) : (start);
-			var _end = (end < 0) ? (@this.Length + end) : (end);
+			int start = (startPos < 0) ? (bytes.Length + startPos) : (startPos);
+			int end = (endPos < 0) ? (bytes.Length + endPos) : (endPos);
 
-			var needlePos = 0;
+			int needlePos = 0;
 
-			for(var i = _start; i < _end; i++)
+			for(int i = start; i < end; i++)
 			{
-				if(@this[i] == needle[needlePos])
+				if(bytes[i] == needle[needlePos])
 				{
 					if(++needlePos == needle.Length)
 					{
@@ -113,33 +113,33 @@ namespace Ami.ByteArrayExtensions
 		}
 
 		[DebuggerStepThrough]
-		public static Int32[] FindAll(this Byte[] @this, Byte[] needle, Int32 start = 0)
+		public static int[] FindAll(this byte[] bytes, byte[] needle, int startPos = 0)
 		{
-			var _start = (start < 0) ? (@this.Length + start) : (start);
-			var _end = (@this.Length);
+			int start = (startPos < 0) ? (bytes.Length + startPos) : (startPos);
+			int end = (bytes.Length);
 
-			return @this.FindAll(needle, _start, _end);
+			return bytes.FindAll(needle, start, end);
 		}
 
 		[DebuggerStepThrough]
-		public static Int32[] FindAll(this Byte[] @this, Byte[] needle, Int32 start, Int32 end)
+		public static int[] FindAll(this byte[] bytes, byte[] needle, int startPos, int endPos)
 		{
-			var _start = (start < 0) ? (@this.Length + start) : (start);
-			var _end = (end < 0) ? (@this.Length + end) : (end);
+			int start = (startPos < 0) ? (bytes.Length + startPos) : (startPos);
+			int end = (endPos < 0) ? (bytes.Length + endPos) : (endPos);
 
-			var matches = new List<Int32>();
+			List<int> matches = new List<int>();
 
-			var needlePos = 0;
+			int needlePos = 0;
 
-			for(var i = _start; i < _end; i++)
+			for(int i = start; i < end; i++)
 			{
-				if(@this[i] == needle[needlePos])
+				if(bytes[i] == needle[needlePos])
 				{
-					if(++needlePos == needle.Length)
-					{
-						matches.Add(i - needlePos + 1);
-						needlePos = 0;
-					}
+					if (++needlePos != needle.Length) 
+						continue;
+					
+					matches.Add(i - needlePos + 1);
+					needlePos = 0;
 				}
 				else
 				{

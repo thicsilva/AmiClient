@@ -34,12 +34,9 @@ namespace Ami
     {
         public sealed class DataEventArgs : EventArgs
         {
-            public readonly Byte[] Data;
+            public readonly byte[] Data;
 
-            internal DataEventArgs(Byte[] data)
-            {
-                this.Data = data;
-            }
+            internal DataEventArgs(byte[] data) => Data = data;
         }
 
         public event EventHandler<DataEventArgs> DataSent;
@@ -50,10 +47,7 @@ namespace Ami
         {
             public readonly Exception Exception;
 
-            internal LifecycleEventArgs(Exception ex)
-            {
-                this.Exception = ex;
-            }
+            internal LifecycleEventArgs(Exception ex) => Exception = ex;
         }
 
         public event EventHandler<LifecycleEventArgs> Stopped;

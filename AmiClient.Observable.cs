@@ -34,7 +34,7 @@ namespace Ami
     {
         private void Dispatch(AmiMessage message)
         {
-            foreach(var observer in this.observers.Keys)
+            foreach(IObserver<AmiMessage> observer in _observers.Keys)
             {
                 observer.OnNext(message);
             }
@@ -47,7 +47,7 @@ namespace Ami
                 throw new ArgumentNullException(nameof(observer));
             }
 
-            return this.observers.GetOrAdd(observer, _ => new Subscription(this, observer));
+            return _observers.GetOrAdd(observer, _ => new Subscription(this, observer));
         }
 
         public void Unsubscribe(IObserver<AmiMessage> observer)
@@ -57,25 +57,22 @@ namespace Ami
                 throw new ArgumentNullException(nameof(observer));
             }
 
-            this.observers.TryRemove(observer, out _);
+            _observers.TryRemove(observer, out _);
         }
 
         private sealed class Subscription : IDisposable
         {
-            private readonly AmiClient client;
+            private readonly AmiClient _client;
 
-            private readonly IObserver<AmiMessage> observer;
+            private readonly IObserver<AmiMessage> _observer;
 
             internal Subscription(AmiClient client, IObserver<AmiMessage> observer)
             {
-                this.client = client;
-                this.observer = observer;
+                _client = client;
+                _observer = observer;
             }
 
-            public void Dispose()
-            {
-                this.client.Unsubscribe(this.observer);
-            }
+            public void Dispose() => _client.Unsubscribe(_observer);
         }
     }
 }

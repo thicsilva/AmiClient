@@ -20,11 +20,11 @@ namespace Ami
 
     public sealed class AmiException : Exception
     {
-        public AmiException(String message) : base(message)
+        public AmiException(string message) : base(message)
         {
         }
 
-        public AmiException(String message, Exception innerException) : base(message, innerException)
+        public AmiException(string message, Exception innerException) : base(message, innerException)
         {
         }
     }

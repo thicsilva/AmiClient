@@ -32,7 +32,7 @@ namespace Ami
 
     public sealed partial class AmiClient
     {
-        public async Task<Boolean> Login(String username, String secret, Boolean md5 = true)
+        public async Task<bool> Login(string username, string secret, bool md5 = true)
         {
             if(username == null)
             {
@@ -54,18 +54,18 @@ namespace Ami
                     { "AuthType", "MD5" },
                 };
 
-                response = await this.Publish(request);
+                response = await Publish(request);
 
-                if(!(response["Response"] ?? String.Empty).Equals("Success", StringComparison.OrdinalIgnoreCase))
+                if(!(response["Response"] ?? string.Empty).Equals("Success", StringComparison.OrdinalIgnoreCase))
                 {
                     return false;
                 }
 
-                var answer = MD5.Create().ComputeHash(Encoding.ASCII.GetBytes(response["Challenge"] + secret));
+                byte[] answer = MD5.Create().ComputeHash(Encoding.ASCII.GetBytes(response["Challenge"] + secret));
 
-                var key = "";
+                string key = "";
 
-                for(var i = 0; i < answer.Length; i++)
+                for(int i = 0; i < answer.Length; i++)
                 {
                     key += answer[i].ToString("x2");
                 }
@@ -78,7 +78,7 @@ namespace Ami
                     { "Key", key },
                 };
 
-                response = await this.Publish(request);
+                response = await Publish(request);
             }
             else
             {
@@ -89,13 +89,13 @@ namespace Ami
                     { "Secret", secret },
                 };
 
-                response = await this.Publish(request);
+                response = await Publish(request);
             }
 
-            return (response["Response"] ?? String.Empty).Equals("Success", StringComparison.OrdinalIgnoreCase);
+            return (response["Response"] ?? string.Empty).Equals("Success", StringComparison.OrdinalIgnoreCase);
         }
 
-        public async Task<Boolean> Logoff()
+        public async Task<bool> Logoff()
         {
             AmiMessage request, response;
 
@@ -104,9 +104,9 @@ namespace Ami
                 { "Action", "Logoff" },
             };
 
-            response = await this.Publish(request);
+            response = await Publish(request);
 
-            return (response["Response"] ?? String.Empty).Equals("Goodbye", StringComparison.OrdinalIgnoreCase);
+            return (response["Response"] ?? string.Empty).Equals("Goodbye", StringComparison.OrdinalIgnoreCase);
         }
     }
 }

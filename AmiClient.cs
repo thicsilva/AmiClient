@@ -18,215 +18,172 @@ namespace Ami
 {
     using System;
     using System.IO;
-    using System.Text;
     using System.Collections.Generic;
     using System.Collections.Concurrent;
     using System.Net.Sockets;
-    using System.Threading;
     using System.Threading.Tasks;
     using System.Linq;
     using System.Reactive.Linq;
-    using System.Security.Cryptography;
-
     using ByteArrayExtensions;
 
     public sealed partial class AmiClient : IDisposable
     {
-        private readonly ConcurrentDictionary<IObserver<AmiMessage>, Subscription> observers;
+        private readonly ConcurrentDictionary<IObserver<AmiMessage>, Subscription> _observers;
 
-        private readonly ConcurrentDictionary<String, TaskCompletionSource<AmiMessage>> inFlight;
+        private readonly ConcurrentDictionary<string, TaskCompletionSource<AmiMessage>> _inFlight;
 
         public AmiClient()
         {
-            this.observers = new ConcurrentDictionary<IObserver<AmiMessage>, Subscription>(
+            _observers = new ConcurrentDictionary<IObserver<AmiMessage>, Subscription>(
                 Environment.ProcessorCount,
                 65536);
 
-            this.inFlight = new ConcurrentDictionary<String, TaskCompletionSource<AmiMessage>>(
+            _inFlight = new ConcurrentDictionary<string, TaskCompletionSource<AmiMessage>>(
                 Environment.ProcessorCount,
                 16384,
                 StringComparer.OrdinalIgnoreCase);
         }
 
-        private Stream stream;
+        private Stream _stream;
 
         [Obsolete("use Start() method")]
         public AmiClient(Stream stream) : this()
         {
-            this.Stream = stream;
+            Stream = stream;
         }
 
         [Obsolete("use Start() method")]
         public Stream Stream
         {
-            get => this.stream;
-            set
-            {
-                var task = this.Start(value);
-                task.Wait();
-            }
+            get => _stream;
+            set => Start(value).Wait();
         }
 
         public async Task<Task> Start(Stream stream)
         {
-            if(this.stream != null)
-            {
+            AmiClient amiClient = this;
+            if (amiClient._stream != null)
                 throw new AmiException("client has already been started");
-            }
-
-            if(!stream.CanRead)
-            {
+            if (!stream.CanRead)
                 throw new ArgumentException("stream does not support reading", nameof(stream));
-            }
-
-            if(!stream.CanWrite)
-            {
-                throw new ArgumentException("stream does not support writing", nameof(stream));
-            }
-
-            this.stream = stream;
-
+            amiClient._stream = stream.CanWrite
+                ? stream
+                : throw new ArgumentException("stream does not support writing", nameof(stream));
             try
             {
-                await this.lineObserver.ToObservable().Take(1);
+                byte[] numArray = await amiClient.LineObserver.ToObservable<byte[]>().Take<byte[]>(1);
             }
             catch (Exception ex)
             {
                 throw new AmiException("protocol handshake failed (is this an Asterisk server?)", ex);
             }
 
-            return Task.Factory.StartNew(this.WorkerMain, TaskCreationOptions.LongRunning);
+            return Task.Factory.StartNew<Task>(new Func<Task>(amiClient.WorkerMain),
+                TaskCreationOptions.LongRunning);
         }
 
-        public void Stop()
-        {
-            this.Stop(null);
-        }
+        public void Stop() => Stop(null);
 
         private void Stop(Exception ex)
         {
-            if(this.stream == null)
-            {
+            if (_stream == null)
                 return;
-            }
 
-            foreach(var observer in this.observers.Keys)
+            foreach (IObserver<AmiMessage> observer in _observers.Keys)
             {
-                if(ex != null)
-                {
+                if (ex != null)
                     observer.OnError(ex);
-                }
                 else
-                {
                     observer.OnCompleted();
-                }
 
-                this.observers.TryRemove(observer, out _);
+                _observers.TryRemove(observer, out _);
             }
 
-            foreach(var kvp in this.inFlight)
+            foreach (KeyValuePair<string, TaskCompletionSource<AmiMessage>> kvp in _inFlight)
             {
-                if(ex != null)
-                {
+                if (ex != null)
                     kvp.Value.TrySetException(ex);
-                }
                 else
-                {
                     kvp.Value.TrySetCanceled();
-                }
 
-                this.inFlight.TryRemove(kvp.Key, out _);
+                _inFlight.TryRemove(kvp.Key, out _);
             }
 
-            this.stream = null;
+            _stream = null;
 
-            this.Stopped?.Invoke(this, new LifecycleEventArgs(ex));
+            Stopped?.Invoke(this, new LifecycleEventArgs(ex));
         }
 
-        public void Dispose()
-        {
-            this.Stop();
-        }
+        public void Dispose() => Stop();
 
         public async Task<AmiMessage> Publish(AmiMessage action)
         {
-            if(this.stream == null)
-            {
+            AmiClient sender = this;
+            if (sender._stream == null)
                 throw new InvalidOperationException("client is not started");
-            }
 
-            var tcs = new TaskCompletionSource<AmiMessage>(TaskCreationOptions.AttachedToParent);
+            TaskCompletionSource<AmiMessage> tcs = new TaskCompletionSource<AmiMessage>(TaskCreationOptions.AttachedToParent);
 
-            if(!this.inFlight.TryAdd(action["ActionID"], tcs))
-            {
+            if (!sender._inFlight.TryAdd(action["ActionID"], tcs))
                 throw new AmiException("a message with the same ActionID is already in flight");
-            }
 
+            AmiMessage task;
             try
             {
-                var buffer = action.ToBytes();
+                byte[] buffer = action.ToBytes();
+                lock (_stream)
+                    _stream.Write(buffer, 0, buffer.Length);
+                DataSent?.Invoke(this, new DataEventArgs(buffer));
 
-                lock(this.stream)
-                {
-                    this.stream.Write(buffer, 0, buffer.Length);
-                }
-
-                this.DataSent?.Invoke(this, new DataEventArgs(buffer));
-
-                return await tcs.Task;
+                task = await tcs.Task;
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
-                this.Stop(ex);
+                sender.Stop(ex);
                 throw;
             }
             finally
             {
-                this.inFlight.TryRemove(action["ActionID"], out _);
+                sender._inFlight.TryRemove(action["ActionID"], out _);
             }
+
+            return task;
         }
 
-        private Byte[] readBuffer = new Byte[0];
+        private byte[] _readBuffer = new byte[0];
 
-        private IEnumerable<Byte[]> lineObserver
+        private IEnumerable<byte[]> LineObserver
         {
             get
             {
-                while(true)
+                AmiClient sender = this;
+                while (true)
                 {
-                    while(true)
+                    int num = sender._readBuffer.Find(AmiMessage.TerminatorBytes, 0, sender._readBuffer.Length);
+                    if (num >= 0)
                     {
-                        var crlfPos = this.readBuffer.Find(AmiMessage.TerminatorBytes, 0, this.readBuffer.Length);
-                        if(crlfPos < 0)
-                        {
-                            break;
-                        }
-
-                        var line = this.readBuffer.Slice(0, crlfPos + AmiMessage.TerminatorBytes.Length);
-                        this.readBuffer = this.readBuffer.Slice(crlfPos + AmiMessage.TerminatorBytes.Length);
-
-                        yield return line;
+                        byte[] numArray = sender._readBuffer.Slice(0, num + AmiMessage.TerminatorBytes.Length);
+                        sender._readBuffer = sender._readBuffer.Slice(num + AmiMessage.TerminatorBytes.Length);
+                        yield return numArray;
                     }
-
-                    try
+                    else
                     {
-                        var bytes = new Byte[4096];
-
-                        var nrBytes = this.stream.Read(bytes, 0, bytes.Length);
-                        if(nrBytes == 0)
+                        try
                         {
-                            yield break; // EOF
+                            byte[] numArray = new byte[4096];
+                            int end = sender._stream.Read(numArray, 0, numArray.Length);
+                            if (end == 0)
+                                break;
+                            sender._readBuffer = sender._readBuffer.Append(numArray.Slice(0, end));
+                            sender.DataReceived?.Invoke(sender, new DataEventArgs(numArray.Slice(0, end)));
                         }
-
-                        this.readBuffer = this.readBuffer.Append(bytes.Slice(0, nrBytes));
-
-                        this.DataReceived?.Invoke(this, new DataEventArgs(bytes.Slice(0, nrBytes)));
-                    }
-                    catch(SocketException ex)
-                    {
-                        if(ex.SocketErrorCode != SocketError.Interrupted && ex.SocketErrorCode != SocketError.TimedOut)
+                        catch (SocketException ex)
                         {
-                            throw;
+                            if (ex.SocketErrorCode != SocketError.Interrupted)
+                            {
+                                if (ex.SocketErrorCode != SocketError.TimedOut)
+                                    throw;
+                            }
                         }
                     }
                 }
@@ -235,44 +192,39 @@ namespace Ami
 
         private async Task WorkerMain()
         {
-            var lineObserver = this.lineObserver.ToObservable();
+            IObservable<byte[]> lineObserver = LineObserver.ToObservable();
 
             try
             {
-                while(this.stream != null)
+                while (_stream != null)
                 {
-                    var payload = new Byte[0];
+                    byte[] payload = new byte[0];
 
                     await lineObserver
-                          .TakeUntil(line => line.SequenceEqual(AmiMessage.TerminatorBytes))
-                          .Do(line => payload = payload.Append(line))
-                          .DefaultIfEmpty();
+                        .TakeUntil(line => line.SequenceEqual(AmiMessage.TerminatorBytes))
+                        .Do(line => payload = payload.Append(line))
+                        .DefaultIfEmpty();
 
-                    if(payload.Length == 0)
-                    {
+                    if (payload.Length == 0)
                         break;
-                    }
 
-                    var message = AmiMessage.FromBytes(payload);
-
-                    if(message.Fields.FirstOrDefault().Key == "Response" &&
-                       this.inFlight.TryGetValue(message["ActionID"], out var tcs))
-                    {
+                    AmiMessage message = AmiMessage.FromBytes(payload);
+                    if (message.Fields.FirstOrDefault().Key == "Response" &&
+                        _inFlight.TryGetValue(message["ActionID"], out TaskCompletionSource<AmiMessage> tcs))
                         tcs.SetResult(message);
-                    }
                     else
-                    {
-                        this.Dispatch(message);
-                    }
+                        Dispatch(message);
                 }
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
-                this.Stop(ex);
+                Stop(ex);
+                lineObserver = null;
                 return;
             }
 
-            this.Stop();
+            Stop();
+            lineObserver = null;
         }
     }
 }
